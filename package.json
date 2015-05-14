@@ -2,7 +2,7 @@
   "name": "jwtDemo",
   "main": "server.js",
   "dependencies": {
-    "bcryptjs": "^2.1.0",
+    "bcrypt": "^0.8.3",
     "body-parser": "^1.12.3",
     "express": "^4.12.3",
     "jsonwebtoken": "^5.0.0",

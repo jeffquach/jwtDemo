@@ -1,5 +1,5 @@
 var mongoose = require("mongoose");
-var bcrypt = require("bcryptjs");
+var bcrypt = require("bcrypt");
 var Schema = mongoose.Schema;
 
 var userSchema = new Schema({
@@ -13,7 +13,6 @@ var userSchema = new Schema({
 userSchema.pre("save",function(next){
 	var user = this;
 	if (!user.isModified("password")) {return next();}
-	if (!user.isModified("refresh_token")) {return next();}
 	bcrypt.genSalt(10,function(err,salt){
 		if (err) {return next(err);}
 		bcrypt.hash(user.password,salt,function(err,hash){
@@ -22,6 +21,10 @@ userSchema.pre("save",function(next){
 			next();
 		});
 	});
+});
+userSchema.pre("save",function(next){
+	var user = this;
+	if (!user.isModified("refresh_token")) {return next();}
 	bcrypt.genSalt(10,function(err,salt){
 		if (err) {return next(err);}
 		bcrypt.hash(user.refresh_token,salt,function(err,hash){
@@ -32,8 +35,17 @@ userSchema.pre("save",function(next){
 	});
 });
 
-userSchema.methods.comparePassword = function(candidatePassword,cb){
-	bcrypt.compare(candidatePassword,this.password,function(err,isMatch){
+userSchema.methods.comparePassword = function(candidatePassword,isPassword,cb){
+	var valueToCompare = isPassword? this.password : this.refresh_token;
+	console.log("$$$ comparePassword $$$");
+	console.log(valueToCompare);
+	bcrypt.compare(candidatePassword,valueToCompare,function(err,isMatch){
+		if (err) {return cb(err);}
+		cb(null,isMatch);
+	});
+};
+userSchema.methods.comparePasswordTingz = function(candidatePassword,cb){
+	bcrypt.compare(candidatePassword,this.refresh_token,function(err,isMatch){
 		if (err) {return cb(err);}
 		cb(null,isMatch);
 	});
