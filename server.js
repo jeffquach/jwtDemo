@@ -139,7 +139,7 @@ apiRoutes.use(function(req,res,next){
 						console.log("$$$ USER $$$");
 						console.log(user);
 
-						bcrypt.compare(refresh_token,user.refresh_token,function(err,matchingPassword){
+						user.comparePassword(refresh_token,false,function(err,matchingPassword){
 							console.log("$$$ matchingPassword $$$");
 							console.log(matchingPassword);
 							if (!matchingPassword) {
