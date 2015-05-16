@@ -43,5 +43,18 @@ userSchema.methods.comparePassword = function(candidatePassword,isPassword,cb){
 		cb(null,isMatch);
 	});
 };
-
+userSchema.methods.generateHashAndSalt = function(valueToHash,req,user,token,next){
+    bcrypt.genSalt(10, function(err, salt) {
+        if (err) {return next(err);}
+        bcrypt.hash(valueToHash, salt, function(err, hash) {
+            if (err) {return next(err);}
+            user.update({$set:{refresh_token:hash}},function(err){
+                if (err) {throw err;};
+                req.token = token;
+                req.refresh_token = valueToHash;
+                next();
+            });
+        });
+    });
+}
 module.exports = mongoose.model("User", userSchema);

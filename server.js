@@ -3,7 +3,6 @@ var app         = express();
 var bodyParser  = require('body-parser');
 var morgan      = require('morgan');
 var mongoose    = require('mongoose');
-var bcrypt = require("bcrypt");
 var fs = require("fs");
 var jwt    = require('jsonwebtoken'); // used to create, sign, and verify tokens
 var config = require('./config'); // get our config file
@@ -28,90 +27,74 @@ app.use(morgan('dev'));
 app.get('/', function(req, res) {
     res.send('Hello! The API is at http://localhost:' + port + '/api');
 });
-app.get('/setup', function(req, res) {
-
-  // create a sample user
-	var id,darmish;
-	crypto.randomBytes(35, function(err, buffer) {
-		if (err) throw err;
-	  	id = buffer.toString('hex');
-	  	//id = "roquan";
-	  	darmish = new User({ 
+app.get("/setup",function(req,res){
+	generateRefreshToken(function(id){
+		darmish = new User({ 
 		    name: 'darmish', 
 		    password: 'darmish',
 		    admin: true,
 		    refresh_token:id 
 		});
-		  // save the sample user
-		  darmish.save(function(err) {
+		// save the sample user
+		darmish.save(function(err) {
 		    if (err) throw err;
-
 		    console.log('User saved successfully');
 		    res.json({ success: true, uuid: id});
-		  });
+		});
+	})
+})
+function generateRefreshToken(cb){
+	crypto.randomBytes(35, refreshTokenCallback(cb));
+}
+function refreshTokenCallback(cb){
+	return function(err,buffer){
+		if (err) throw err;
+	  	var id = buffer.toString('hex');
+	  	cb(id);
+	}
+}
+app.get("/nerp",function(req,res,next){
+	getKey("./private.pem",next,function(file){
+		res.json({file:file});
 	});
 });
-
+app.get("/public",function(req,res,next){
+	getKey("./public.pem",next,function(file){
+		res.json({file:file});
+	});
+});
+function getKey(fileToRead,next,cb){
+	fs.readFile(fileToRead,getKeyCallback(next,cb));
+}
+function getKeyCallback(next,cb){
+	return function(err,data){
+		if (err) {next(err)};
+		cb(data)
+	}
+}
 // API ROUTES -------------------
 // we'll get to these in a second
 var apiRoutes = express.Router();
 
-apiRoutes.post("/authenticate",function(req,res){
-	console.log("$$$ req.decoded $$$");
-	console.log(req.decoded);
-	jwtAuth({name: req.body.name},req.body.password,res,function(token){
-		console.log("$$$ token $$$");
-		console.log(token);
-		if (token) {
-			res.json({success:true,message:"Here's your token hater!",token:token});
-		}else{
-			res.status(401).json({success:false,message:"Wrong password yo!"})
-		}
-	});
-	// User.findOne({name: req.body.name}, function(err,user){
-	// 	if (err) {throw err;};
-	// 	if (!user) {
-	// 		res.json({success:false,message:"Authentication failed, probs a wrong password or somethang!"});
-	// 	}else if(user){
-	// 		user.comparePassword(req.body.password,function(err,matchingPassword){
-	// 			if (!matchingPassword) {
-	// 				res.status(401).json({success:false,message:"Wrong password yo!"});
-	// 			}else{
-	// 				console.log("$$$ User is $$$");
-	// 				console.log(user);
-	// 				var cert = fs.readFileSync("./private.pem");
-	// 				var token = jwt.sign({user:user.name},cert,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
-	// 				res.json({success:true,message:"Here's your token hater!",token:token});
-	// 			}
-	// 		})
-	// 	}
-	// });
-});
-
-function jwtAuth(nameOrIdentifier,password,res,callback){
-	User.findOne(nameOrIdentifier, function(err,user){
+apiRoutes.post("/authenticate",function(req,res,next){
+	User.findOne({name: req.body.name}, function(err,user){
 		if (err) {throw err;};
 		if (!user) {
 			res.json({success:false,message:"Authentication failed, probs a wrong password or somethang!"});
-		}else if(user && user.status === "active"){
-			console.log("$$$ password $$$:");
-			console.log(password);
-			user.comparePassword(password,true,function(err,matchingPassword){
-				console.log("$$$ matchingPassword $$$");
-				console.log(matchingPassword);
+		}else if(user){
+			user.comparePassword(req.body.password,true,function(err,matchingPassword){
 				if (!matchingPassword) {
-					callback(null);
+					res.status(401).json({success:false,message:"Wrong password yo!"});
 				}else{
-					console.log("$$$ User is $$$");
-					console.log(user);
-					var cert = fs.readFileSync("./private.pem");
-					var token = jwt.sign({user:user.name},cert,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
-					callback(token);
+					getKey("./private.pem",next,function(file){
+						var token = jwt.sign({user:user.name},file,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
+						res.json({success:true,message:"Here's your token hater!",token:token});
+					})
 				}
 			})
 		}
 	});
-}
+});
 
 // Place middleware for jwt code above here to get the code to run for these routes that require the webtoken
 
@@ -120,92 +103,39 @@ apiRoutes.use(function(req,res,next){
 	if (token) {
 		var cert = fs.readFileSync("./public.pem");
 		//var cert = fs.readFileSync("./jwtPrivateKey.pem");
-		jwt.verify(token,cert,{algorithms:["RS256"],ignoreExpiration:false},function(err,decoded){
-			if (err) {
-				//res.json({message:"Big time problems son!"});
-				console.log("$$$ ERROR $$$");
-				console.log(err);
-				console.log("$$$ decoded (ERROR) object from jwt.verify callback is $$$:");
-				console.log(decoded);
-				var refresh_token = req.headers['x-refresh-token'];
-				console.log("$$$ refresh token $$$");
-				console.log(refresh_token);
-				console.log("$$ USERNAME $$");
-				var username = req.query.username;
-				console.log(username);
-				if (username) {
-					
-					User.findOne({name:username},function(err,user){
-						console.log("$$$ USER $$$");
-						console.log(user);
-
-						user.comparePassword(refresh_token,false,function(err,matchingPassword){
-							console.log("$$$ matchingPassword $$$");
-							console.log(matchingPassword);
-							if (!matchingPassword) {
-								return res.json({message:"Big time problems son!"});
-							}else{
-								var new_refresh_token,cert = fs.readFileSync("./private.pem");
-								var token = jwt.sign({user:user.name},cert,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
-								crypto.randomBytes(35, function(ex, buffer) {
-									if (err) {return next(err);}
-								  	new_refresh_token = buffer.toString('hex');
-							  		bcrypt.genSalt(10,function(err,salt){
-										if (err) {return next(err);}
-										bcrypt.hash(new_refresh_token,salt,function(err,hash){
-											if (err) {return next(err);}
-											user.update({$set:{refresh_token:hash}},function(err){
-												if (err) {throw err;};
-												req.token = token;
-												req.refresh_token = new_refresh_token;
-												next();
-											});
-										});
-									});
-								});
-							}
+		getKey("./public.pem",next,function(cert){
+			jwt.verify(token,cert,{algorithms:["RS256"],ignoreExpiration:false},function(err,decoded){
+				if (err) {
+					var refresh_token = req.query.refresh_token || req.headers['x-refresh-token'];
+					var username = req.query.username;
+					if (username) {
+						User.findOne({name:username},function(err,user){
+							user.comparePassword(refresh_token,false,function(err,matchingPassword){
+								if (!matchingPassword) {
+									return res.json({message:"Big time problems son!"});
+								}else{
+									getKey("./private.pem",next,function(cert){
+										var token = jwt.sign({user:user.name},cert,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
+										generateRefreshToken(function(refresh_token){
+											var new_refresh_token = refresh_token.toString('hex');
+										  	user.generateHashAndSalt(new_refresh_token,req,user,token,next);
+										})	
+									})
+								}
+							});
 						});
-					
-						// user.comparePasswordTingz(refresh_token,function(err,matchingPassword){
-						// 	console.log("$$$ matchingPassword $$$");
-						// 	console.log(matchingPassword);
-						// 	if (!matchingPassword) {
-						// 		return res.json({message:"Big time problems son!"});
-						// 	}else{
-						// 		// console.log("$$$ MATCHES! $$$");
-						// 		// next();
-						// 		var id,cert = fs.readFileSync("./private.pem");
-						// 		var token = jwt.sign({user:user.name},cert,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
-						// 		crypto.randomBytes(35, function(ex, buf) {
-						// 		  	id = buf.toString('hex');
-						// 	  		bcrypt.genSalt(10,function(err,salt){
-						// 				if (err) {return next(err);}
-						// 				bcrypt.hash(refresh_token,salt,function(err,hash){
-						// 					if (err) {return next(err);}
-						// 					user.update({$set:{refresh_token:hash}},function(err){
-						// 						if (err) {throw err;};
-						// 						req.token = token;
-						// 						req.refresh_token = id;
-						// 						next();
-						// 					});
-						// 				});
-						// 			});
-						// 		});
-						// 	}
-						// })
-					});
-					//next();
+					}
+					else{
+						return res.json({success:false,message:"Failed to authenticate token"});
+					}
+				}else{
+					console.log("$$$ decoded object from jwt.verify callback is $$$:");
+					console.log(decoded);
+					req.decoded = decoded;
+					req.jammers = "Yo bro!";
+					next();
 				}
-				else{
-					return res.json({success:false,message:"Failed to authenticate token"});
-				}
-			}else{
-				console.log("$$$ decoded object from jwt.verify callback is $$$:");
-				console.log(decoded);
-				req.decoded = decoded;
-				req.jammers = "Yo bro!";
-				next();
-			}
+			})
 		})
 	}else{
 		return res.status(403).send({
