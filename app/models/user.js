@@ -10,47 +10,6 @@ var userSchema = new Schema({
 	status: {type: String, default: "active"}
 });
 
-// userSchema.pre("save",function(next){
-//     var user = this;
-//     if (!user.isModified("password")) {return next();}
-//     bcrypt.genSalt(10,function(err,salt){
-//         if (err) {return next(err);}
-//         bcrypt.hash(user.password,salt,function(err,hash){
-//             if (err) {return next(err);}
-//             user.password = hash;
-//             next();
-//         });
-//     });
-// });
-// function hashedValueCallback(userValue,isPassword){
-//     return function(next){
-//     	var user = this;
-// 	    if (!user.isModified(userValue)) {return next();}
-// 	    bcrypt.genSalt(10,saltCallback(user, isPassword, next));
-//     }
-// }
-// function saltCallback(user, isPassword, next){
-//     return function(err,salt){
-//     	var valueToHash = isPassword? user.password : user.refresh_token;
-//         bcrypt.hash(valueToHash,salt,hashCallback(user, isPassword, next));
-//     }
-// }
-// function hashCallback(user, isPassword, next){
-//     return function(err,hash){
-//         if (err) {return next(err);}
-//         if (isPassword) {
-//         	user.password = hash;
-//         }else{
-//         	user.refresh_token = hash;
-//         }
-//         next();
-//     }
-// }
-// bcrypt.genSalt(10, function(err, salt) {
-//     bcrypt.hash('B4c0/\/', salt, function(err, hash) {
-//         // Store hash in your password DB.
-//     });
-// });
 userSchema.pre("save",passwordCallback());
 userSchema.pre("save",refreshTokenCallback());
 userSchema.methods.comparePassword = function(candidatePassword,isPassword,cb){
