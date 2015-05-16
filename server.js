@@ -4,9 +4,10 @@ var bodyParser  = require('body-parser');
 var morgan      = require('morgan');
 var mongoose    = require('mongoose');
 var fs = require("fs");
-var jwt    = require('jsonwebtoken'); // used to create, sign, and verify tokens
-var config = require('./config'); // get our config file
-var User   = require('./app/models/user'); // get our mongoose model
+var bcrypt = require("bcrypt");
+var jwt    = require('jsonwebtoken');
+var config = require('./config');
+var User   = require('./app/models/user');
 var crypto = require('crypto');
 
 var port = process.env.PORT || 3000;
@@ -67,6 +68,7 @@ function comparePassword(user,valueToCompare,isPassword,req,res,next){
 }
 function comparePasswordCallback(user,req,res,isPassword,next){
 	return function(err,matchingPassword){
+		if (err) {next(err)};
 		if (!matchingPassword) {
 			res.status(401).json({success:false,message:"Wrong password yo!"});
 		}else{
@@ -124,7 +126,12 @@ apiRoutes.use(function(req,res,next){
 					var username = req.query.username;
 					if (username) {
 						User.findOne({name:username},function(err,user){
-							comparePassword(user,refresh_token,false,req,res,next);
+							if (err) {next(err)};
+							if (!user) {
+								res.status(403).json({message:"That user doesn't exist!"});
+							}else{
+								comparePassword(user,refresh_token,false,req,res,next);
+							}
 						});
 					}
 					else{
@@ -148,7 +155,7 @@ apiRoutes.use(function(req,res,next){
 });
 
 apiRoutes.get("/",function(req,res){
-	res.json({message: "Yo hater, diz API be bumpin' son!",jwt: req.token, refresh_token: req.refresh_token});
+	res.json({message: "Default API route",jwt: req.token, refresh_token: req.refresh_token});
 });
 
 apiRoutes.get("/users",function(req,res){
@@ -157,8 +164,6 @@ apiRoutes.get("/users",function(req,res){
 	});
 });
 apiRoutes.get("/darmish",function(req,res){
-	console.log("$$$ req.query $$$");
-	console.log(req.query);
 	User.findOne({name:req.query.darmish},function(err,users){
 		res.json({user:users});
 	});
