@@ -53,16 +53,6 @@ function refreshTokenCallback(cb){
 	  	cb(id);
 	}
 }
-app.get("/nerp",function(req,res,next){
-	getKey("./private.pem",next,function(file){
-		res.json({file:file});
-	});
-});
-app.get("/public",function(req,res,next){
-	getKey("./public.pem",next,function(file){
-		res.json({file:file});
-	});
-});
 function getKey(fileToRead,next,cb){
 	fs.readFile(fileToRead,getKeyCallback(next,cb));
 }
@@ -72,8 +62,43 @@ function getKeyCallback(next,cb){
 		cb(data)
 	}
 }
+function comparePassword(user,valueToCompare,isPassword,req,res,next){
+	user.comparePassword(valueToCompare,isPassword,comparePasswordCallback(user,req,res,isPassword,next));
+}
+function comparePasswordCallback(user,req,res,isPassword,next){
+	return function(err,matchingPassword){
+		if (!matchingPassword) {
+			res.status(401).json({success:false,message:"Wrong password yo!"});
+		}else{
+			if (isPassword) {
+				generateKey(user,res,next);
+			}else{
+				generateKeyAndRefreshToken(user,req,res,next);
+			}
+		}
+	}
+}
+function generateKey(user,res,next){
+	getKey("./private.pem",next,keyGenerationCallback(user,function(token){
+		res.json({success:true,message:"Here's your token hater!",token:token});
+	}))
+}
+function generateKeyAndRefreshToken(user,req,res,next){
+	getKey("./private.pem",next,keyGenerationCallback(user,function(token){
+		generateRefreshToken(function(refresh_token){
+			var new_refresh_token = refresh_token.toString('hex');
+		  	user.generateHashAndSalt(new_refresh_token,req,user,token,next);
+		})
+	}))
+}
+function keyGenerationCallback(user,cb){
+	return function(file){
+		var token = jwt.sign({user:user.name},file,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
+		cb(token)
+	}
+}
+
 // API ROUTES -------------------
-// we'll get to these in a second
 var apiRoutes = express.Router();
 
 apiRoutes.post("/authenticate",function(req,res,next){
@@ -82,16 +107,7 @@ apiRoutes.post("/authenticate",function(req,res,next){
 		if (!user) {
 			res.json({success:false,message:"Authentication failed, probs a wrong password or somethang!"});
 		}else if(user){
-			user.comparePassword(req.body.password,true,function(err,matchingPassword){
-				if (!matchingPassword) {
-					res.status(401).json({success:false,message:"Wrong password yo!"});
-				}else{
-					getKey("./private.pem",next,function(file){
-						var token = jwt.sign({user:user.name},file,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
-						res.json({success:true,message:"Here's your token hater!",token:token});
-					})
-				}
-			})
+			comparePassword(user,req.body.password,true,req,res,next);
 		}
 	});
 });
@@ -101,8 +117,6 @@ apiRoutes.post("/authenticate",function(req,res,next){
 apiRoutes.use(function(req,res,next){
 	var token = req.body.token || req.query.token || req.headers['x-access-token'];
 	if (token) {
-		var cert = fs.readFileSync("./public.pem");
-		//var cert = fs.readFileSync("./jwtPrivateKey.pem");
 		getKey("./public.pem",next,function(cert){
 			jwt.verify(token,cert,{algorithms:["RS256"],ignoreExpiration:false},function(err,decoded){
 				if (err) {
@@ -110,19 +124,7 @@ apiRoutes.use(function(req,res,next){
 					var username = req.query.username;
 					if (username) {
 						User.findOne({name:username},function(err,user){
-							user.comparePassword(refresh_token,false,function(err,matchingPassword){
-								if (!matchingPassword) {
-									return res.json({message:"Big time problems son!"});
-								}else{
-									getKey("./private.pem",next,function(cert){
-										var token = jwt.sign({user:user.name},cert,{algorithm:"RS256",expiresInMinutes:1,ignoreExpiration:false});
-										generateRefreshToken(function(refresh_token){
-											var new_refresh_token = refresh_token.toString('hex');
-										  	user.generateHashAndSalt(new_refresh_token,req,user,token,next);
-										})	
-									})
-								}
-							});
+							comparePassword(user,refresh_token,false,req,res,next);
 						});
 					}
 					else{
@@ -163,8 +165,6 @@ apiRoutes.get("/darmish",function(req,res){
 });
 
 app.use("/api",apiRoutes);
-// =======================
-// start the server ======
-// =======================
+
 app.listen(port);
 console.log('Magic happens at http://localhost:' + port);
